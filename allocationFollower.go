@@ -237,8 +237,7 @@ func (a *AllocationFollower) collectAllocations(save *SavePoint) error {
 
 	for _, alloc := range allocs {
 		record := a.Allocations[alloc.ID]
-		runState := alloc.DesiredStatus == "run" || alloc.ClientStatus == "running"
-		if record == nil && runState {
+		if record == nil {
 			// handle new alloc records w/ potentially saved state
 			falloc := NewFollowedAllocation(alloc, a.Nomad, a.OutChan, a.log, a.logTag)
 			if save != nil {
@@ -264,8 +263,7 @@ func (a *AllocationFollower) collectAllocations(save *SavePoint) error {
 
 func containsValidAlloc(id string, allocs []*nomadApi.Allocation) bool {
 	for _, alloc := range allocs {
-		runState := alloc.DesiredStatus == "run" || alloc.ClientStatus == "running"
-		if alloc.ID == id && runState {
+		if alloc.ID == id {
 			return true
 		}
 	}
