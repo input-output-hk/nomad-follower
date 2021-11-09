@@ -1,5 +1,5 @@
 {
-  description = "Flake for the nomad_follower";
+  description = "Flake for nomad-follower";
 
   inputs = {
     devshell.url = "github:numtide/devshell";
@@ -16,8 +16,8 @@
       preOverlays = [ devshell.overlay ];
 
       overlay = final: prev: {
-        nomad_follower = prev.buildGoModule rec {
-          pname = "nomad_follower";
+        nomad-follower = prev.buildGoModule rec {
+          pname = "nomad-follower";
           version = "2021.11.09.001";
           vendorSha256 = "sha256-VhsjoBAMzbEcFoFQiJ5FF+MowFZevx03xOp2L1j8CFQ=";
 
@@ -48,12 +48,12 @@
         };
       };
 
-      packages = { nomad_follower }@pkgs:
+      packages = { nomad-follower }@pkgs:
         pkgs // {
-          defaultPackage = nomad_follower;
+          defaultPackage = nomad-follower;
         };
 
-      hydraJobs = { nomad_follower }@pkgs: pkgs;
+      hydraJobs = { nomad-follower }@pkgs: pkgs;
 
       devShell = { devshell }: devshell.fromTOML ./devshell.toml;
     };

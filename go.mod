@@ -1,4 +1,4 @@
-module github.com/sas1024/nomad_follower
+module github.com/input-output-hk/nomad-follower
 
 go 1.14
 
