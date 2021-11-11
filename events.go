@@ -35,6 +35,7 @@ type VectorSourceFile struct {
 	Type            string   `toml:"type"`
 	IgnoreOlderSecs uint64   `toml:"ignore_older_secs"`
 	Include         []string `toml:"include"`
+	LineDelimiter   string   `toml:"line_delimiter"`
 	ReadFrom        string   `toml:"read_from"`
 }
 
@@ -121,7 +122,7 @@ func (f *nomadFollower) eventListener() error {
 }
 
 func (f *nomadFollower) loadIndex() uint64 {
-	bindex, err := os.ReadFile("index")
+	bindex, err := os.ReadFile(filepath.Join(f.stateDir, "index"))
 	if err != nil {
 		return 0
 	}
@@ -134,7 +135,7 @@ func (f *nomadFollower) loadIndex() uint64 {
 
 func (f *nomadFollower) saveIndex(index uint64) {
 	sindex := strconv.FormatUint(index, 10)
-	err := os.WriteFile("index", []byte(sindex), 0644)
+	err := os.WriteFile(filepath.Join(f.stateDir, "index"), []byte(sindex), 0644)
 	if err != nil {
 		f.logger.Printf("Couldn't write index: %s\n", err.Error())
 	}
@@ -165,32 +166,33 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 	transformNames := []string{}
 
 	f.allocs.Each(func(id string, alloc *api.Allocation) {
-		transformNames = append(transformNames, "transform_"+id)
-
 		prefix := fmt.Sprintf(f.allocPrefix, id)
 
-		sources[id] = VectorSourceFile{
-			Type:            "file",
-			IgnoreOlderSecs: 300,
-			Include: []string{
-				filepath.Join(prefix, "logs/*.stderr.[0-9]*"),
-				filepath.Join(prefix, "logs/*.stdout.[0-9]*"),
-			},
-			ReadFrom: "beginning",
-		}
+		for _, source := range []string{"stdout", "stderr"} {
+			transformNames = append(transformNames, "transform_"+source+"_"+id)
 
-		transforms["transform_"+id] = VectorTransformRemap{
-			Inputs: []string{id},
-			Type:   "remap",
-			Source: `
-		    .nomad_alloc_id = "` + alloc.ID + `"
-		    .nomad_job_id = "` + alloc.JobID + `"
-		    .nomad_alloc_name = "` + alloc.Name + `"
-		    .nomad_namespace = "` + alloc.Namespace + `"
-		    .nomad_node_id = "` + alloc.NodeID + `"
-		    .nomad_node_name = "` + alloc.NodeName + `"
-		    .nomad_task_group = "` + alloc.TaskGroup + `"
-		  `,
+			sources["source_"+source+"_"+id] = VectorSourceFile{
+				Type:            "file",
+				IgnoreOlderSecs: 300,
+				Include:         []string{filepath.Join(prefix, "logs/*."+source+".[0-9]*")},
+				LineDelimiter:   "\r\n",
+				ReadFrom:        "beginning",
+			}
+
+			transforms["transform_"+source+"_"+id] = VectorTransformRemap{
+				Inputs: []string{"source_" + source + "_" + id},
+				Type:   "remap",
+				Source: `
+					.source = "` + source + `"
+					.nomad_alloc_id = "` + alloc.ID + `"
+					.nomad_job_id = "` + alloc.JobID + `"
+					.nomad_alloc_name = "` + alloc.Name + `"
+					.nomad_namespace = "` + alloc.Namespace + `"
+					.nomad_node_id = "` + alloc.NodeID + `"
+					.nomad_node_name = "` + alloc.NodeName + `"
+					.nomad_task_group = "` + alloc.TaskGroup + `"
+				`,
+			}
 		}
 	})
 
@@ -200,6 +202,7 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 			Inputs:   transformNames,
 			Endpoint: f.lokiUrl,
 			Labels: map[string]string{
+				"source":           "{{ source }}",
 				"nomad_alloc_id":   "{{ nomad_alloc_id }}",
 				"nomad_job_id":     "{{ nomad_job_id }}",
 				"nomad_alloc_name": "{{ nomad_alloc_name }}",
