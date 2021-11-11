@@ -76,8 +76,9 @@ type VectorSinkLoki struct {
 }
 
 type VectorSinkLokiEncoding struct {
-	Codec           string `toml:"codec"`
-	TimestampFormat string `toml:"timestamp_format"`
+	Codec           string   `toml:"codec"`
+	TimestampFormat string   `toml:"timestamp_format"`
+	OnlyFields      []string `toml:"only_fields"`
 }
 
 func (f *nomadFollower) eventListener() error {
@@ -160,6 +161,7 @@ func (f *nomadFollower) populateAllocs() {
 func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 	sources := map[string]interface{}{}
 	transforms := map[string]interface{}{}
+	sinks := map[string]interface{}{}
 	transformNames := []string{}
 
 	f.allocs.Each(func(id string, alloc *api.Allocation) {
@@ -181,18 +183,18 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 			Inputs: []string{id},
 			Type:   "remap",
 			Source: `
-        .nomad_alloc_id = "` + alloc.ID + `"
-        .nomad_job_id = "` + alloc.JobID + `"
-        .nomad_alloc_name = "` + alloc.Name + `"
-        .nomad_namespace = "` + alloc.Namespace + `"
-        .nomad_node_id = "` + alloc.NodeID + `"
-        .nomad_node_name = "` + alloc.NodeName + `"
-        .nomad_task_group = "` + alloc.TaskGroup + `"
-      `,
+		    .nomad_alloc_id = "` + alloc.ID + `"
+		    .nomad_job_id = "` + alloc.JobID + `"
+		    .nomad_alloc_name = "` + alloc.Name + `"
+		    .nomad_namespace = "` + alloc.Namespace + `"
+		    .nomad_node_id = "` + alloc.NodeID + `"
+		    .nomad_node_name = "` + alloc.NodeName + `"
+		    .nomad_task_group = "` + alloc.TaskGroup + `"
+		  `,
 		}
 	})
 
-	sinks := map[string]interface{}{
+	sinks = map[string]interface{}{
 		"loki": VectorSinkLoki{
 			Type:     "loki",
 			Inputs:   transformNames,
@@ -207,8 +209,9 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 				"nomad_task_group": "{{ nomad_task_group }}",
 			},
 			Encoding: VectorSinkLokiEncoding{
-				Codec:           "json",
+				Codec:           "text",
 				TimestampFormat: "rfc3339",
+				OnlyFields:      []string{"message"},
 			},
 		},
 	}
