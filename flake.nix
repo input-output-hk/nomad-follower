@@ -41,10 +41,6 @@
               self.rev or "dirty"
             }"
           ];
-
-          # postInstall = ''
-          #   mv $out/bin/nomad-driver-nix $out/bin/nix-driver
-          # '';
         };
       };
 

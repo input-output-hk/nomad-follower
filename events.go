@@ -83,7 +83,9 @@ type VectorSinkLokiEncoding struct {
 }
 
 func (f *nomadFollower) eventListener() error {
-	self, _ := f.client.Agent().Self()
+	self, err := f.client.Agent().Self()
+	die(f.logger, err)
+
 	nodeID := self.Stats["client"]["node_id"]
 	queryOptions := &api.QueryOptions{Namespace: "default"}
 	f.populateAllocs()
