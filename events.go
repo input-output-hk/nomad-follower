@@ -171,15 +171,13 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 	sources := map[string]interface{}{}
 	transforms := map[string]interface{}{}
 	sinks := map[string]interface{}{}
-	transformNames := []string{}
 
 	f.allocs.Each(func(id string, alloc *api.Allocation) {
 		prefix := fmt.Sprintf(f.allocPrefix, id)
 
 		for _, source := range []string{"stdout", "stderr"} {
-			transformNames = append(transformNames, "transform_"+source+"_"+id)
-
-			sources["source_"+source+"_"+id] = VectorSourceFile{
+			sourceName := "source_" + source + "_" + id
+			sources[sourceName] = VectorSourceFile{
 				Type:            "file",
 				IgnoreOlderSecs: 300,
 				Include:         []string{filepath.Join(prefix, "logs/*."+source+".[0-9]*")},
@@ -188,7 +186,7 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 			}
 
 			transforms["transform_"+source+"_"+id] = VectorTransformRemap{
-				Inputs: []string{"source_" + source + "_" + id},
+				Inputs: []string{sourceName},
 				Type:   "remap",
 				Source: `
 					.source = "` + source + `"
@@ -207,7 +205,7 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 	sinks = map[string]interface{}{
 		"loki": VectorSinkLoki{
 			Type:     "loki",
-			Inputs:   transformNames,
+			Inputs:   []string{"transform_stdout_*", "transform_stderr_*"},
 			Endpoint: f.lokiUrl,
 			Labels: map[string]string{
 				"source":           "{{ source }}",
