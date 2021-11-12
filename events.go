@@ -269,7 +269,7 @@ func (f *nomadFollower) eventHandleAllocation(alloc *api.Allocation) {
 	case "pending", "running":
 		f.allocs.Add(alloc)
 		f.writeConfig()
-	case "complete":
+	case "complete", "failed":
 		go func() {
 			// Give Vector time to scoop up all outstanding logs
 			time.Sleep(30 * time.Second)
