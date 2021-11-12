@@ -63,7 +63,7 @@ func main() {
 	f := &nomadFollower{
 		logger:         logger,
 		client:         client,
-		queryOptions:   &api.QueryOptions{Namespace: "default"},
+		queryOptions:   &api.QueryOptions{Namespace: args.Namespace},
 		ctx:            ctx,
 		configM:        &sync.Mutex{},
 		configFile:     filepath.Join(args.State, "vector.toml"),
