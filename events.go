@@ -88,7 +88,7 @@ func (f *nomadFollower) eventListener() error {
 	die(f.logger, errors.WithMessage(err, "While looking up the local agent"))
 
 	nodeID := self.Stats["client"]["node_id"]
-	f.populateAllocs()
+	f.populateAllocs(nodeID)
 	topics := map[api.Topic][]string{api.TopicAllocation: {"*"}}
 	index := f.loadIndex()
 
@@ -143,7 +143,7 @@ func (f *nomadFollower) saveIndex(index uint64) {
 	}
 }
 
-func (f *nomadFollower) populateAllocs() {
+func (f *nomadFollower) populateAllocs(nodeID string) {
 	f.allocs = &allocations{
 		allocs: map[string]*api.Allocation{},
 		lock:   &sync.RWMutex{},
@@ -157,7 +157,13 @@ func (f *nomadFollower) populateAllocs() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		f.allocs.Add(alloc)
+		if alloc.NodeID != nodeID {
+			continue
+		}
+		switch alloc.ClientStatus {
+		case "pending", "running":
+			f.allocs.Add(alloc)
+		}
 	}
 }
 
