@@ -16,6 +16,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/hashicorp/nomad/api"
+	"github.com/pkg/errors"
 )
 
 type VectorConfig struct {
@@ -84,7 +85,7 @@ type VectorSinkLokiEncoding struct {
 
 func (f *nomadFollower) eventListener() error {
 	self, err := f.client.Agent().Self()
-	die(f.logger, err)
+	die(f.logger, errors.WithMessage(err, "While looking up the local agent"))
 
 	nodeID := self.Stats["client"]["node_id"]
 	queryOptions := &api.QueryOptions{Namespace: "default"}
@@ -94,7 +95,7 @@ func (f *nomadFollower) eventListener() error {
 
 	eventStream := f.client.EventStream()
 	events, err := eventStream.Stream(context.Background(), topics, index, queryOptions)
-	die(f.logger, err)
+	die(f.logger, errors.WithMessage(err, "While starting the event stream"))
 
 	f.writeConfig()
 
@@ -150,7 +151,7 @@ func (f *nomadFollower) populateAllocs() {
 	}
 
 	allocs, _, err := f.client.Allocations().List(f.queryOptions)
-	die(f.logger, err)
+	die(f.logger, errors.WithMessage(err, "While listing allocations"))
 
 	for _, allocStub := range allocs {
 		alloc, _, err := f.client.Allocations().Info(allocStub.ID, f.queryOptions)
@@ -249,7 +250,7 @@ func (f *nomadFollower) vector(done chan bool) {
 		done <- true
 	}()
 
-	die(f.logger, cmd.Run())
+	die(f.logger, errors.WithMessage(cmd.Run(), "While running vector"))
 }
 
 func (f *nomadFollower) eventHandler(events []api.Event, nodeID string) {

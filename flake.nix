@@ -18,8 +18,8 @@
       overlay = final: prev: {
         nomad-follower = prev.buildGoModule rec {
           pname = "nomad-follower";
-          version = "2021.11.11.001";
-          vendorSha256 = "sha256-VhsjoBAMzbEcFoFQiJ5FF+MowFZevx03xOp2L1j8CFQ=";
+          version = "2021.11.12.001";
+          vendorSha256 = "sha256-Z/W3TBSqKc38l5LgsqQtHy/XKHBtOHzh9aG/3KdiKBw=";
 
           src = inputs.inclusive.lib.inclusive ./. [
             ./allocations.go
@@ -50,6 +50,8 @@
         };
 
       hydraJobs = { nomad-follower }@pkgs: pkgs;
+
+      nixosModules.nomad-follower = { };
 
       devShell = { devshell }: devshell.fromTOML ./devshell.toml;
     };

@@ -12,6 +12,7 @@ import (
 
 	"github.com/alexflint/go-arg"
 	"github.com/hashicorp/nomad/api"
+	"github.com/pkg/errors"
 )
 
 var NOMAD_MAX_WAIT = 5 * time.Minute
@@ -52,7 +53,7 @@ func main() {
 
 	nomadConfig := api.DefaultConfig()
 	client, err := api.NewClient(nomadConfig)
-	die(logger, err)
+	die(logger, errors.WithMessage(err, "While creating Nomad client"))
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -69,7 +70,7 @@ func main() {
 	}
 
 	err = os.MkdirAll(filepath.Join(f.stateDir, "vector"), 0755)
-	die(logger, err)
+	die(logger, errors.WithMessage(err, "While creating state dir"))
 
 	go func() {
 		c := make(chan os.Signal)
@@ -81,7 +82,7 @@ func main() {
 	}()
 
 	err = f.eventListener()
-	die(logger, err)
+	die(logger, errors.WithMessage(err, "While starting eventListener"))
 }
 
 func die(logger *log.Logger, err error) {
