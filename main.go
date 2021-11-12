@@ -18,22 +18,24 @@ import (
 var NOMAD_MAX_WAIT = 5 * time.Minute
 
 type nomadFollower struct {
-	logger       *log.Logger
-	client       *api.Client
-	queryOptions *api.QueryOptions
-	ctx          context.Context
-	configM      *sync.Mutex
-	allocs       *allocations
-	configFile   string
-	stateDir     string
-	allocPrefix  string
-	lokiUrl      string
+	logger         *log.Logger
+	client         *api.Client
+	queryOptions   *api.QueryOptions
+	ctx            context.Context
+	configM        *sync.Mutex
+	allocs         *allocations
+	configFile     string
+	stateDir       string
+	allocPrefix    string
+	lokiUrl        string
+	nomadNamespace string
 }
 
 type cli struct {
-	State   string `arg:"--state" help:"dir for vector and index state"`
-	Alloc   string `arg:"--alloc" help:"Prefix for Nomad allocation directories, %s will be replaced by the Allocation ID and globs are allowed"`
-	LokiUrl string `arg:"--loki-url" help:"Loki Base URL"`
+	State     string `arg:"--state" help:"dir for vector and index state"`
+	Alloc     string `arg:"--alloc" help:"Prefix for Nomad allocation directories, %s will be replaced by the Allocation ID and globs are allowed"`
+	LokiUrl   string `arg:"--loki-url" help:"Loki Base URL"`
+	Namespace string `arg:"--namespace" help:"Nomad namespace to monitor"`
 }
 
 func (c *cli) Version() string { return buildVersion + " (" + buildCommit + ")" }
@@ -45,9 +47,10 @@ func main() {
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 
 	args := &cli{
-		State:   "./state",
-		Alloc:   "/tmp/NomadClient*/%s/alloc",
-		LokiUrl: "http://localhost:3100",
+		State:     "./state",
+		Alloc:     "/tmp/NomadClient*/%s/alloc",
+		LokiUrl:   "http://localhost:3100",
+		Namespace: "default",
 	}
 	arg.MustParse(args)
 
@@ -58,15 +61,16 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	f := &nomadFollower{
-		logger:       logger,
-		client:       client,
-		queryOptions: &api.QueryOptions{Namespace: "default"},
-		ctx:          ctx,
-		configM:      &sync.Mutex{},
-		configFile:   filepath.Join(args.State, "vector.toml"),
-		stateDir:     args.State,
-		allocPrefix:  args.Alloc,
-		lokiUrl:      args.LokiUrl,
+		logger:         logger,
+		client:         client,
+		queryOptions:   &api.QueryOptions{Namespace: "default"},
+		ctx:            ctx,
+		configM:        &sync.Mutex{},
+		configFile:     filepath.Join(args.State, "vector.toml"),
+		stateDir:       args.State,
+		allocPrefix:    args.Alloc,
+		lokiUrl:        args.LokiUrl,
+		nomadNamespace: args.Namespace,
 	}
 
 	err = os.MkdirAll(filepath.Join(f.stateDir, "vector"), 0755)

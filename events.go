@@ -88,7 +88,7 @@ func (f *nomadFollower) eventListener() error {
 	die(f.logger, errors.WithMessage(err, "While looking up the local agent"))
 
 	nodeID := self.Stats["client"]["node_id"]
-	queryOptions := &api.QueryOptions{Namespace: "default"}
+	queryOptions := &api.QueryOptions{Namespace: f.nomadNamespace}
 	f.populateAllocs()
 	topics := map[api.Topic][]string{api.TopicAllocation: {"*"}}
 	index := f.loadIndex()
