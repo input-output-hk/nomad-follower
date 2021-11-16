@@ -238,7 +238,7 @@ func (f *nomadFollower) vector(done chan bool) {
 	cmd := exec.Command(
 		"vector",
 		"--watch-config", f.configFile,
-		"--config", f.configFile,
+		"--config-toml", f.configFile,
 	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -299,6 +299,12 @@ func (f *nomadFollower) writeConfig() {
 
 	if err := ioutil.WriteFile(f.configFile+".new", buf.Bytes(), 0777); err != nil {
 		log.Fatal(err)
+	}
+
+	cmd := exec.Command("vector", "--config-toml", f.configFile+".new", "validate")
+	if err := cmd.Run(); err != nil {
+		log.Println("Failed to validate config, ignoring")
+		return
 	}
 
 	if err := os.Rename(f.configFile+".new", f.configFile); err != nil {

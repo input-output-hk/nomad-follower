@@ -18,7 +18,7 @@
       overlay = final: prev: {
         nomad-follower = prev.buildGoModule rec {
           pname = "nomad-follower";
-          version = "2021.11.12.005";
+          version = "2021.11.16.001";
           vendorSha256 = "sha256-Z/W3TBSqKc38l5LgsqQtHy/XKHBtOHzh9aG/3KdiKBw=";
 
           src = inputs.inclusive.lib.inclusive ./. [
