@@ -4,10 +4,8 @@ import (
 	"context"
 	"log"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/alexflint/go-arg"
@@ -29,6 +27,8 @@ type nomadFollower struct {
 	allocPrefix    string
 	lokiUrl        string
 	nomadNamespace string
+	vectorStart    chan bool
+	vectorStarted  bool
 }
 
 type cli struct {
@@ -58,35 +58,25 @@ func main() {
 	client, err := api.NewClient(nomadConfig)
 	die(logger, errors.WithMessage(err, "While creating Nomad client"))
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	f := &nomadFollower{
 		logger:         logger,
 		client:         client,
 		queryOptions:   &api.QueryOptions{Namespace: args.Namespace},
-		ctx:            ctx,
 		configM:        &sync.Mutex{},
 		configFile:     filepath.Join(args.State, "vector.toml"),
 		stateDir:       args.State,
 		allocPrefix:    args.Alloc,
 		lokiUrl:        args.LokiUrl,
 		nomadNamespace: args.Namespace,
+		vectorStart:    make(chan bool),
+		vectorStarted:  false,
 	}
 
-	err = os.MkdirAll(filepath.Join(f.stateDir, "vector"), 0755)
+	err = os.MkdirAll(filepath.Join(f.stateDir, "vector"), 0o755)
 	die(logger, errors.WithMessage(err, "While creating state dir"))
 
-	go func() {
-		c := make(chan os.Signal)
-		signal.Notify(c, syscall.SIGINT)
-		signal.Notify(c, syscall.SIGKILL)
-		s := <-c
-		logger.Printf("Received Signal '%s', gracefully shutting down\n", s.String())
-		cancel()
-	}()
-
-	err = f.eventListener()
-	die(logger, errors.WithMessage(err, "While starting eventListener"))
+	err = f.start()
+	die(logger, errors.WithMessage(err, "While starting"))
 }
 
 func die(logger *log.Logger, err error) {

@@ -4,14 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -83,7 +81,16 @@ type VectorSinkLokiEncoding struct {
 	OnlyFields      []string `toml:"only_fields"`
 }
 
-func (f *nomadFollower) eventListener() error {
+func (f *nomadFollower) start() error {
+	go f.listen()
+
+	log.Println("Waiting for valid config before starting vector")
+	<-f.vectorStart
+	log.Println("Valid config found, starting vector")
+	return f.vector()
+}
+
+func (f *nomadFollower) listen() error {
 	self, err := f.client.Agent().Self()
 	die(f.logger, errors.WithMessage(err, "While looking up the local agent"))
 
@@ -91,36 +98,26 @@ func (f *nomadFollower) eventListener() error {
 	f.populateAllocs(nodeID)
 	topics := map[api.Topic][]string{api.TopicAllocation: {"*"}}
 	index := f.loadIndex()
-
 	eventStream := f.client.EventStream()
 	events, err := eventStream.Stream(context.Background(), topics, index, f.queryOptions)
 	die(f.logger, errors.WithMessage(err, "While starting the event stream"))
 
 	f.writeConfig()
 
-	vectorDone := make(chan bool)
-	go f.vector(vectorDone)
-
-	for {
-		select {
-		case <-f.ctx.Done():
-			f.logger.Println("Received done, stopping Vector")
-			<-vectorDone
-			f.logger.Println("Vector finished")
-			return nil
-		case event := <-events:
-			if event.Err != nil {
-				return err
-			}
-
-			if event.IsHeartbeat() {
-				continue
-			}
-
-			f.saveIndex(event.Index)
-			f.eventHandler(event.Events, nodeID)
+	for event := range events {
+		if event.Err != nil {
+			return err
 		}
+
+		if event.IsHeartbeat() {
+			continue
+		}
+
+		f.saveIndex(event.Index)
+		f.eventHandler(event.Events, nodeID)
 	}
+
+	return nil
 }
 
 func (f *nomadFollower) loadIndex() uint64 {
@@ -137,7 +134,7 @@ func (f *nomadFollower) loadIndex() uint64 {
 
 func (f *nomadFollower) saveIndex(index uint64) {
 	sindex := strconv.FormatUint(index, 10)
-	err := os.WriteFile(filepath.Join(f.stateDir, "index"), []byte(sindex), 0644)
+	err := os.WriteFile(filepath.Join(f.stateDir, "index"), []byte(sindex), 0o644)
 	if err != nil {
 		f.logger.Printf("Couldn't write index: %s\n", err.Error())
 	}
@@ -234,7 +231,7 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 	}
 }
 
-func (f *nomadFollower) vector(done chan bool) {
+func (f *nomadFollower) vector() error {
 	cmd := exec.Command(
 		"vector",
 		"--watch-config", f.configFile,
@@ -242,24 +239,12 @@ func (f *nomadFollower) vector(done chan bool) {
 	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-
-	go func() {
-		<-f.ctx.Done()
-		f.logger.Println("Killing vector")
-		if p := cmd.Process; p != nil {
-			p.Signal(syscall.SIGTERM)
-			p.Wait()
-		}
-		done <- true
-	}()
-
-	die(f.logger, errors.WithMessage(cmd.Run(), "While running vector"))
+	return cmd.Run()
 }
 
 func (f *nomadFollower) eventHandler(events []api.Event, nodeID string) {
 	for _, event := range events {
-		switch event.Topic {
-		case api.TopicAllocation:
+		if event.Topic == api.TopicAllocation {
 			alloc, err := event.Allocation()
 			if err == nil && alloc.NodeID == nodeID {
 				f.eventHandleAllocation(alloc)
@@ -285,7 +270,7 @@ func (f *nomadFollower) eventHandleAllocation(alloc *api.Allocation) {
 	}
 }
 
-func (f *nomadFollower) writeConfig() {
+func (f *nomadFollower) writeConfig() error {
 	f.configM.Lock()
 	defer f.configM.Unlock()
 
@@ -294,20 +279,32 @@ func (f *nomadFollower) writeConfig() {
 	buf := bytes.Buffer{}
 
 	if err := toml.NewEncoder(&buf).Encode(f.generateVectorConfig()); err != nil {
-		log.Fatal(err)
+		return errors.WithMessage(err, "While encoding the vector config")
 	}
 
-	if err := ioutil.WriteFile(f.configFile+".new", buf.Bytes(), 0777); err != nil {
-		log.Fatal(err)
+	if err := os.WriteFile(f.configFile+".new", buf.Bytes(), 0o777); err != nil {
+		return errors.WithMessage(err, "while writing the new config file")
 	}
 
-	cmd := exec.Command("vector", "--config-toml", f.configFile+".new", "validate")
-	if err := cmd.Run(); err != nil {
-		log.Println("Failed to validate config, ignoring")
-		return
+	if err := f.validateNewConfig(); err != nil {
+		return errors.WithMessage(err, "while validating vector config")
+	} else {
+		if !f.vectorStarted {
+			f.vectorStarted = true
+			f.vectorStart <- true
+		}
 	}
 
 	if err := os.Rename(f.configFile+".new", f.configFile); err != nil {
-		log.Fatal(err)
+		return errors.WithMessage(err, "while replacing the old config")
 	}
+
+	return nil
+}
+
+func (f *nomadFollower) validateNewConfig() error {
+	cmd := exec.Command("vector", "validate", f.configFile+".new")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
