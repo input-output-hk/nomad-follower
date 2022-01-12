@@ -172,20 +172,27 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 	f.allocs.Each(func(id string, alloc *api.Allocation) {
 		prefix := fmt.Sprintf(f.allocPrefix, id)
 
-		for _, source := range []string{"stdout", "stderr"} {
-			sourceName := "source_" + source + "_" + id
-			sources[sourceName] = VectorSourceFile{
-				Type:            "file",
-				IgnoreOlderSecs: 300,
-				Include:         []string{filepath.Join(prefix, "logs/*."+source+".[0-9]*")},
-				LineDelimiter:   "\r\n",
-				ReadFrom:        "beginning",
-			}
+		taskNames := []string{}
+		for name := range alloc.TaskResources {
+			taskNames = append(taskNames, name)
+		}
 
-			transforms["transform_"+source+"_"+id] = VectorTransformRemap{
-				Inputs: []string{sourceName},
-				Type:   "remap",
-				Source: `
+		for _, taskName := range taskNames {
+			f.logger.Printf("Adding job %s task %s", alloc.ID, taskName)
+			for _, source := range []string{"stdout", "stderr"} {
+				sourceName := "source_" + source + "_" + taskName + "_" + id
+				sources[sourceName] = VectorSourceFile{
+					Type:            "file",
+					IgnoreOlderSecs: 300,
+					Include:         []string{filepath.Join(prefix, "logs/"+taskName+"."+source+".[0-9]*")},
+					LineDelimiter:   "\r\n",
+					ReadFrom:        "beginning",
+				}
+
+				transforms["transform_"+source+"_"+taskName+"_"+id] = VectorTransformRemap{
+					Inputs: []string{sourceName},
+					Type:   "remap",
+					Source: `
 					.source = "` + source + `"
 					.nomad_alloc_id = "` + alloc.ID + `"
 					.nomad_job_id = "` + alloc.JobID + `"
@@ -194,7 +201,9 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 					.nomad_node_id = "` + alloc.NodeID + `"
 					.nomad_node_name = "` + alloc.NodeName + `"
 					.nomad_task_group = "` + alloc.TaskGroup + `"
+					.nomad_task_name = "` + taskName + `"
 				`,
+				}
 			}
 		}
 	})
@@ -213,6 +222,7 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 				"nomad_node_id":    "{{ nomad_node_id }}",
 				"nomad_node_name":  "{{ nomad_node_name }}",
 				"nomad_task_group": "{{ nomad_task_group }}",
+				"nomad_task_name":  "{{ nomad_task_name }}",
 			},
 			Encoding: VectorSinkLokiEncoding{
 				Codec:           "text",
@@ -236,6 +246,7 @@ func (f *nomadFollower) vector() error {
 		"vector",
 		"--watch-config", f.configFile,
 		"--config-toml", f.configFile,
+		"--quiet",
 	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -273,6 +284,8 @@ func (f *nomadFollower) eventHandleAllocation(alloc *api.Allocation) {
 func (f *nomadFollower) writeConfig() error {
 	f.configM.Lock()
 	defer f.configM.Unlock()
+
+	time.Sleep(1 * time.Second)
 
 	log.Println("Writing config to", f.configFile)
 
