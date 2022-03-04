@@ -16,31 +16,9 @@
       preOverlays = [ devshell.overlay ];
 
       overlay = final: prev: {
-        nomad-follower = prev.buildGoModule rec {
-          pname = "nomad-follower";
-          version = "2022.01.12.001";
-          vendorSha256 = "sha256-Z/W3TBSqKc38l5LgsqQtHy/XKHBtOHzh9aG/3KdiKBw=";
-
-          src = inputs.inclusive.lib.inclusive ./. [
-            ./allocations.go
-            ./events.go
-            ./go.mod
-            ./go.sum
-            ./main.go
-          ];
-
-          CGO_ENABLED = "0";
-          GOOS = "linux";
-
-          ldflags = [
-            "-s"
-            "-w"
-            "-extldflags"
-            "-static"
-            "-X main.buildVersion=${version} -X main.buildCommit=${
-              self.rev or "dirty"
-            }"
-          ];
+        nomad-follower = prev.callPackage ./package.nix {
+          inclusive = inputs.inclusive.lib.inclusive;
+          rev = self.rev or "dirty";
         };
       };
 

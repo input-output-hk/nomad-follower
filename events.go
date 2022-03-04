@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/hashicorp/nomad/api"
+	nomad "github.com/hashicorp/nomad/api"
 	"github.com/pkg/errors"
 )
 
@@ -91,14 +91,14 @@ func (f *nomadFollower) start() error {
 }
 
 func (f *nomadFollower) listen() error {
-	self, err := f.client.Agent().Self()
+	self, err := f.getNomadClient().Agent().Self()
 	die(f.logger, errors.WithMessage(err, "While looking up the local agent"))
 
 	nodeID := self.Stats["client"]["node_id"]
 	f.populateAllocs(nodeID)
-	topics := map[api.Topic][]string{api.TopicAllocation: {"*"}}
+	topics := map[nomad.Topic][]string{nomad.TopicAllocation: {"*"}}
 	index := f.loadIndex()
-	eventStream := f.client.EventStream()
+	eventStream := f.getNomadClient().EventStream()
 	events, err := eventStream.Stream(context.Background(), topics, index, f.queryOptions)
 	die(f.logger, errors.WithMessage(err, "While starting the event stream"))
 
@@ -142,15 +142,15 @@ func (f *nomadFollower) saveIndex(index uint64) {
 
 func (f *nomadFollower) populateAllocs(nodeID string) {
 	f.allocs = &allocations{
-		allocs: map[string]*api.Allocation{},
+		allocs: map[string]*nomad.Allocation{},
 		lock:   &sync.RWMutex{},
 	}
 
-	allocs, _, err := f.client.Allocations().List(f.queryOptions)
+	allocs, _, err := f.getNomadClient().Allocations().List(f.queryOptions)
 	die(f.logger, errors.WithMessage(err, "While listing allocations"))
 
 	for _, allocStub := range allocs {
-		alloc, _, err := f.client.Allocations().Info(allocStub.ID, f.queryOptions)
+		alloc, _, err := f.getNomadClient().Allocations().Info(allocStub.ID, f.queryOptions)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -169,7 +169,7 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 	transforms := map[string]interface{}{}
 	sinks := map[string]interface{}{}
 
-	f.allocs.Each(func(id string, alloc *api.Allocation) {
+	f.allocs.Each(func(id string, alloc *nomad.Allocation) {
 		prefix := fmt.Sprintf(f.allocPrefix, id)
 
 		taskNames := []string{}
@@ -253,9 +253,9 @@ func (f *nomadFollower) vector() error {
 	return cmd.Run()
 }
 
-func (f *nomadFollower) eventHandler(events []api.Event, nodeID string) {
+func (f *nomadFollower) eventHandler(events []nomad.Event, nodeID string) {
 	for _, event := range events {
-		if event.Topic == api.TopicAllocation {
+		if event.Topic == nomad.TopicAllocation {
 			alloc, err := event.Allocation()
 			if err == nil && alloc.NodeID == nodeID {
 				f.eventHandleAllocation(alloc)
@@ -264,7 +264,7 @@ func (f *nomadFollower) eventHandler(events []api.Event, nodeID string) {
 	}
 }
 
-func (f *nomadFollower) eventHandleAllocation(alloc *api.Allocation) {
+func (f *nomadFollower) eventHandleAllocation(alloc *nomad.Allocation) {
 	switch alloc.ClientStatus {
 	case "pending", "running":
 		f.allocs.Add(alloc)

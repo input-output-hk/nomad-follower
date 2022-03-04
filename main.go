@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/alexflint/go-arg"
-	"github.com/hashicorp/nomad/api"
+	nomad "github.com/hashicorp/nomad/api"
 	"github.com/pkg/errors"
 )
 
@@ -17,8 +17,8 @@ var NOMAD_MAX_WAIT = 5 * time.Minute
 
 type nomadFollower struct {
 	logger         *log.Logger
-	client         *api.Client
-	queryOptions   *api.QueryOptions
+	nomadClient    *nomad.Client
+	queryOptions   *nomad.QueryOptions
 	ctx            context.Context
 	configM        *sync.Mutex
 	allocs         *allocations
@@ -29,6 +29,7 @@ type nomadFollower struct {
 	nomadNamespace string
 	vectorStart    chan bool
 	vectorStarted  bool
+	vaultTokenFile string
 }
 
 type cli struct {
@@ -54,14 +55,14 @@ func main() {
 	}
 	arg.MustParse(args)
 
-	nomadConfig := api.DefaultConfig()
-	client, err := api.NewClient(nomadConfig)
+	nomadConfig := nomad.DefaultConfig()
+	client, err := nomad.NewClient(nomadConfig)
 	die(logger, errors.WithMessage(err, "While creating Nomad client"))
 
 	f := &nomadFollower{
 		logger:         logger,
-		client:         client,
-		queryOptions:   &api.QueryOptions{Namespace: args.Namespace},
+		nomadClient:    client,
+		queryOptions:   &nomad.QueryOptions{Namespace: args.Namespace},
 		configM:        &sync.Mutex{},
 		configFile:     filepath.Join(args.State, "vector.toml"),
 		stateDir:       args.State,
@@ -70,6 +71,7 @@ func main() {
 		nomadNamespace: args.Namespace,
 		vectorStart:    make(chan bool),
 		vectorStarted:  false,
+		vaultTokenFile: os.Getenv("VAULT_TOKEN_FILE"),
 	}
 
 	err = os.MkdirAll(filepath.Join(f.stateDir, "vector"), 0o755)
@@ -77,6 +79,10 @@ func main() {
 
 	err = f.start()
 	die(logger, errors.WithMessage(err, "While starting"))
+}
+
+func (f *nomadFollower) getNomadClient() *nomad.Client {
+	return f.nomadClient
 }
 
 func die(logger *log.Logger, err error) {

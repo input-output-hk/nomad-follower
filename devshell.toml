@@ -32,11 +32,11 @@ name = "nomad-driver-nix"
 packages = [
   "diffutils",
   "go",
-  "goimports",
+  "gotools",
   "gopls",
   "gocode",
   "gcc",
   "fd",
-  "nixfmt",
   "gnumake",
+  "alejandra",
 ]
