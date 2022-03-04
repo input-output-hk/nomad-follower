@@ -10,6 +10,24 @@ import (
 )
 
 func (f *nomadFollower) manageTokens() {
+	nomadTokenSet := make(chan bool)
+	done := make(chan bool)
+
+	go func() {
+		for range nomadTokenSet {
+			select {
+			case done <- true:
+			default:
+				// this needs to be sent only once
+			}
+		}
+	}()
+
+	f.logger.Println("Waiting for valid Vault token")
+	<-done
+}
+
+func (f *nomadFollower) foo(nomadTokenSet chan bool) {
 	log := f.logger
 
 	vaultTokenRenewed := make(chan string, 1)
@@ -21,14 +39,14 @@ func (f *nomadFollower) manageTokens() {
 	}()
 
 	for {
-		if err := f.manageNomadToken(); err != nil {
+		if err := f.manageNomadToken(nomadTokenSet); err != nil {
 			log.Println("Failed managing Nomad token: %w", err)
 			time.Sleep(time.Minute)
 		}
 	}
 }
 
-func (f *nomadFollower) manageNomadToken() error {
+func (f *nomadFollower) manageNomadToken(nomadTokenSet chan bool) error {
 	log := f.logger
 	secret, err := f.vaultClient.Logical().Read("nomad/creds/nomad-follower")
 	if err != nil {
@@ -37,12 +55,14 @@ func (f *nomadFollower) manageNomadToken() error {
 
 	if secretIdI, ok := secret.Data["secret_id"]; ok {
 		if secretId, ok := secretIdI.(string); ok {
+			log.Println("Obtained Nomad token")
 			f.getNomadClient().SetSecretID(secretId)
+			nomadTokenSet <- true
 		} else {
-			return errors.New("secret_id wasn't a string")
+			return errors.New("The secret_id wasn't a string")
 		}
 	} else {
-		return errors.New("nomad credentials didn't have secret_id")
+		return errors.New("Nomad credentials don't have secret_id")
 	}
 
 	input := &vault.LifetimeWatcherInput{Secret: secret}
@@ -59,7 +79,7 @@ func (f *nomadFollower) manageNomadToken() error {
 		case err := <-watcher.DoneCh():
 			return err
 		case renewal := <-watcher.RenewCh():
-			log.Printf("Renewed nomad token: %#v", renewal)
+			log.Printf("Renewed Nomad token: %#v", renewal)
 		}
 	}
 }
