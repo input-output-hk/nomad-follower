@@ -82,6 +82,11 @@ type VectorSinkLokiEncoding struct {
 }
 
 func (f *nomadFollower) start() error {
+	go f.manageTokens()
+	log.Println("Waiting for valid Nomad token")
+	for f.vaultClient.Token() == "" {
+		time.Sleep(time.Second)
+	}
 	go f.listen()
 
 	log.Println("Waiting for valid config before starting vector")

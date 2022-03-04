@@ -10,6 +10,7 @@ import (
 
 	"github.com/alexflint/go-arg"
 	nomad "github.com/hashicorp/nomad/api"
+	vault "github.com/hashicorp/vault/api"
 	"github.com/pkg/errors"
 )
 
@@ -18,6 +19,7 @@ var NOMAD_MAX_WAIT = 5 * time.Minute
 type nomadFollower struct {
 	logger         *log.Logger
 	nomadClient    *nomad.Client
+	vaultClient    *vault.Client
 	queryOptions   *nomad.QueryOptions
 	ctx            context.Context
 	configM        *sync.Mutex
@@ -56,12 +58,16 @@ func main() {
 	arg.MustParse(args)
 
 	nomadConfig := nomad.DefaultConfig()
-	client, err := nomad.NewClient(nomadConfig)
+	nomadClient, err := nomad.NewClient(nomadConfig)
 	die(logger, errors.WithMessage(err, "While creating Nomad client"))
+
+	vaultClient, err := vault.NewClient(nil)
+	die(logger, errors.WithMessage(err, "While creating Vault client"))
 
 	f := &nomadFollower{
 		logger:         logger,
-		nomadClient:    client,
+		nomadClient:    nomadClient,
+		vaultClient:    vaultClient,
 		queryOptions:   &nomad.QueryOptions{Namespace: args.Namespace},
 		configM:        &sync.Mutex{},
 		configFile:     filepath.Join(args.State, "vector.toml"),

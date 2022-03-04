@@ -11,28 +11,26 @@ import (
 
 func (f *nomadFollower) manageTokens() {
 	log := f.logger
-	client, err := vault.NewClient(nil)
-	die(log, err)
 
 	vaultTokenRenewed := make(chan string, 1)
 
 	go func() {
 		for vaultToken := range vaultTokenRenewed {
-			client.SetToken(vaultToken)
+			f.vaultClient.SetToken(vaultToken)
 		}
 	}()
 
 	for {
-		if err := f.manageNomadToken(client); err != nil {
+		if err := f.manageNomadToken(); err != nil {
 			log.Println("Failed managing Nomad token: %w", err)
 			time.Sleep(time.Minute)
 		}
 	}
 }
 
-func (f *nomadFollower) manageNomadToken(client *vault.Client) error {
+func (f *nomadFollower) manageNomadToken() error {
 	log := f.logger
-	secret, err := client.Logical().Read("nomad/creds/nomad-follower")
+	secret, err := f.vaultClient.Logical().Read("nomad/creds/nomad-follower")
 	if err != nil {
 		return err
 	}
@@ -47,9 +45,8 @@ func (f *nomadFollower) manageNomadToken(client *vault.Client) error {
 		return errors.New("nomad credentials didn't have secret_id")
 	}
 
-	watcher, err := client.NewLifetimeWatcher(&vault.LifetimeWatcherInput{
-		Secret: secret,
-	})
+	input := &vault.LifetimeWatcherInput{Secret: secret}
+	watcher, err := f.vaultClient.NewLifetimeWatcher(input)
 	if err != nil {
 		return err
 	}
