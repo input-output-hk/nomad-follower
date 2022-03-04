@@ -23,11 +23,13 @@ func (f *nomadFollower) manageTokens() {
 		}
 	}()
 
+	go f.manageVaultToken(nomadTokenSet)
+
 	f.logger.Println("Waiting for valid Vault token")
 	<-done
 }
 
-func (f *nomadFollower) foo(nomadTokenSet chan bool) {
+func (f *nomadFollower) manageVaultToken(nomadTokenSet chan bool) {
 	log := f.logger
 
 	vaultTokenRenewed := make(chan string, 1)
