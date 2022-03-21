@@ -8,12 +8,18 @@
     utils.url = "github:kreisys/flake-utils";
   };
 
-  outputs = { self, nixpkgs, utils, devshell, ... }@inputs:
+  outputs = {
+    self,
+    nixpkgs,
+    utils,
+    devshell,
+    ...
+  } @ inputs:
     utils.lib.simpleFlake {
-      systems = [ "x86_64-linux" ];
+      systems = ["x86_64-linux"];
       inherit nixpkgs;
 
-      preOverlays = [ devshell.overlay ];
+      preOverlays = [devshell.overlay];
 
       overlay = final: prev: {
         nomad-follower = prev.callPackage ./package.nix {
@@ -22,15 +28,22 @@
         };
       };
 
-      packages = { nomad-follower }@pkgs:
-        pkgs // {
+      packages = {nomad-follower} @ pkgs:
+        pkgs
+        // {
           defaultPackage = nomad-follower;
         };
 
-      hydraJobs = { nomad-follower }@pkgs: pkgs;
+      hydraJobs = {
+        nomad-follower,
+        callPackage,
+      }: {
+        inherit nomad-follower;
+        test = callPackage ./test.nix {inherit inputs;};
+      };
 
-      nixosModules.nomad-follower = { };
+      nixosModules.nomad-follower = import ./module.nix;
 
-      devShell = { devshell }: devshell.fromTOML ./devshell.toml;
+      devShell = {devshell}: devshell.fromTOML ./devshell.toml;
     };
 }
