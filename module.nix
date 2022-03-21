@@ -27,7 +27,7 @@ in {
 
       allocPattern = lib.mkOption {
         type = lib.types.str;
-        default = "/var/lib/nomad/alloc/%s/alloc";
+        default = "/var/lib/nomad/alloc/%%s/alloc";
       };
 
       vaultAddr = lib.mkOption {
