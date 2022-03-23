@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -82,24 +84,54 @@ type VectorSinkLokiEncoding struct {
 }
 
 func (f *nomadFollower) start() error {
-	f.manageTokens()
+	go f.reloadToken()
+	go f.checkToken()
 	go f.listen()
 
-	log.Println("Waiting for valid config before starting vector")
+	f.logger.Println("Waiting for valid Vector")
 	<-f.vectorStart
-	log.Println("Valid config found, starting vector")
+	f.logger.Println("Starting Vector")
 	return f.vector()
 }
 
+func (f *nomadFollower) reloadToken() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGHUP)
+
+	for sig := range c {
+		println(sig)
+		fmt.Printf("Got A HUP Signal! Now Reloading Nomad Token....\n")
+		if b, err := os.ReadFile(f.nomadTokenFile); err != nil {
+			f.logger.Fatalf("Failed to read the nomad token file at %s", f.nomadTokenFile)
+		} else {
+			f.nomadClient.SetSecretID(strings.TrimSpace(string(b)))
+			f.logger.Printf("Nomad Token reloaded\n")
+		}
+	}
+}
+
+// Just checks that the current token is still fine regularly
+func (f *nomadFollower) checkToken() {
+	for {
+		if currentToken, _, err := f.nomadClient.ACLTokens().Self(nil); err != nil {
+			f.logger.Fatal(err)
+		} else {
+			f.logger.Printf("Current Token: id: %s name: %s policies: %v\n", currentToken.AccessorID, currentToken.Name, currentToken.Policies)
+		}
+		time.Sleep(1 * time.Minute)
+	}
+}
+
+// Listen to Nomad events and update Vector config accordingly
 func (f *nomadFollower) listen() error {
-	self, err := f.getNomadClient().Agent().Self()
+	self, err := f.nomadClient.Agent().Self()
 	die(f.logger, errors.WithMessage(err, "While looking up the local agent"))
 
 	nodeID := self.Stats["client"]["node_id"]
 	f.populateAllocs(nodeID)
 	topics := map[nomad.Topic][]string{nomad.TopicAllocation: {"*"}}
 	index := f.loadIndex()
-	eventStream := f.getNomadClient().EventStream()
+	eventStream := f.nomadClient.EventStream()
 	events, err := eventStream.Stream(context.Background(), topics, index, f.queryOptions)
 	die(f.logger, errors.WithMessage(err, "While starting the event stream"))
 
@@ -147,13 +179,13 @@ func (f *nomadFollower) populateAllocs(nodeID string) {
 		lock:   &sync.RWMutex{},
 	}
 
-	allocs, _, err := f.getNomadClient().Allocations().List(f.queryOptions)
+	allocs, _, err := f.nomadClient.Allocations().List(f.queryOptions)
 	die(f.logger, errors.WithMessage(err, "While listing allocations"))
 
 	for _, allocStub := range allocs {
-		alloc, _, err := f.getNomadClient().Allocations().Info(allocStub.ID, f.queryOptions)
+		alloc, _, err := f.nomadClient.Allocations().Info(allocStub.ID, f.queryOptions)
 		if err != nil {
-			log.Fatal(err)
+			f.logger.Fatal(err)
 		}
 		if alloc.NodeID != nodeID {
 			continue
@@ -288,7 +320,7 @@ func (f *nomadFollower) writeConfig() error {
 
 	time.Sleep(1 * time.Second)
 
-	log.Println("Writing config to", f.configFile)
+	f.logger.Println("Writing config to", f.configFile)
 
 	buf := bytes.Buffer{}
 

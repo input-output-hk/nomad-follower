@@ -3,11 +3,11 @@
   inclusive,
   rev,
 }: let
-  final = package "sha256-ELNQydQqAFp0POL/WEMBBdBOZuu+qXSbD922ku/ySac=";
+  final = package "sha256-mBKpbFAQBioHlk9LJEMV2Uuls6KNP3ob4eU1MwMb67M=";
   package = vendorSha256:
     buildGoModule rec {
       pname = "nomad-follower";
-      version = "2022.03.04.004";
+      version = "2022.03.23.002";
       inherit vendorSha256;
 
       passthru.invalidHash =
@@ -19,7 +19,6 @@
 
         ./allocations.go
         ./events.go
-        ./token.go
         ./main.go
       ];
 
@@ -31,9 +30,7 @@
         "-w"
         "-extldflags"
         "-static"
-        "-X main.buildVersion=${version} -X main.buildCommit=${
-          rev
-        }"
+        "-X main.buildVersion=${version} -X main.buildCommit=${rev}"
       ];
     };
 in

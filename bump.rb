@@ -4,7 +4,8 @@ require 'json'
 require 'date'
 require 'open3'
 
-pkg = 'nomad-follower'
+pkg = File.basename(File.dirname(File.expand_path($PROGRAM_NAME)))
+pp pkg
 file = 'package.nix'
 
 system 'go', 'mod', 'tidy'

@@ -30,19 +30,14 @@ in {
         default = "/var/lib/nomad/alloc/%%s/alloc";
       };
 
-      vaultAddr = lib.mkOption {
-        type = lib.types.str;
-        default = "http://127.0.0.1:8200";
-      };
-
       nomadAddr = lib.mkOption {
         type = lib.types.str;
         default = "https://127.0.0.1:4646";
       };
 
-      vaultTokenFile = lib.mkOption {
+      nomadTokenFile = lib.mkOption {
         type = lib.types.str;
-        default = "/run/keys/vault-token";
+        default = "/run/keys/nomad-follower-token";
       };
     };
   };
@@ -55,9 +50,8 @@ in {
       path = [pkgs.vector];
 
       environment = {
-        VAULT_ADDR = cfg.vaultAddr;
         NOMAD_ADDR = cfg.nomadAddr;
-        VAULT_TOKEN_FILE = cfg.vaultTokenFile;
+        NOMAD_TOKEN_FILE = cfg.nomadTokenFile;
       };
 
       serviceConfig = {
@@ -77,6 +71,7 @@ in {
           "--namespace"
           cfg.nomadNamespace
         ];
+        ExecReload = toString ["kill" "-HUP" "$MAINPID"];
       };
     };
   };
