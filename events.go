@@ -223,7 +223,7 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 					Type:            "file",
 					IgnoreOlderSecs: 300,
 					Include:         []string{filepath.Join(prefix, "logs/"+taskName+"."+source+".[0-9]*")},
-					LineDelimiter:   "\r\n",
+					LineDelimiter:   "\n",
 					ReadFrom:        "beginning",
 				}
 

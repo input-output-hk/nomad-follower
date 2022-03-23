@@ -7,7 +7,7 @@
   package = vendorSha256:
     buildGoModule rec {
       pname = "nomad-follower";
-      version = "2022.03.23.003";
+      version = "2022.03.23.004";
       inherit vendorSha256;
 
       passthru.invalidHash =
