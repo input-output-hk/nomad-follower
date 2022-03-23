@@ -84,11 +84,12 @@ type VectorSinkLokiEncoding struct {
 }
 
 func (f *nomadFollower) start() error {
+	f.setTokenFromEnvironment()
 	go f.reloadToken()
 	go f.checkToken()
 	go f.listen()
 
-	f.logger.Println("Waiting for valid Vector")
+	f.logger.Println("Waiting for valid Vector configuration")
 	<-f.vectorStart
 	f.logger.Println("Starting Vector")
 	return f.vector()
@@ -101,12 +102,16 @@ func (f *nomadFollower) reloadToken() {
 	for sig := range c {
 		println(sig)
 		fmt.Printf("Got A HUP Signal! Now Reloading Nomad Token....\n")
-		if b, err := os.ReadFile(f.nomadTokenFile); err != nil {
-			f.logger.Fatalf("Failed to read the nomad token file at %s", f.nomadTokenFile)
-		} else {
-			f.nomadClient.SetSecretID(strings.TrimSpace(string(b)))
-			f.logger.Printf("Nomad Token reloaded\n")
-		}
+		f.setTokenFromEnvironment()
+	}
+}
+
+func (f *nomadFollower) setTokenFromEnvironment() {
+	if b, err := os.ReadFile(f.nomadTokenFile); err != nil {
+		f.logger.Fatalf("Failed to read the nomad token file at %s", f.nomadTokenFile)
+	} else {
+		f.nomadClient.SetSecretID(strings.TrimSpace(string(b)))
+		f.logger.Printf("Nomad Token reloaded\n")
 	}
 }
 
