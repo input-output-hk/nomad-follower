@@ -133,7 +133,9 @@ func (f *nomadFollower) listen() error {
 
 	nodeID := self.Stats["client"]["node_id"]
 	f.populateAllocs(nodeID)
-	f.writeConfig()
+	if err := f.writeConfig(); err != nil {
+		f.logger.Println(err)
+	}
 
 	topics := map[nomad.Topic][]string{nomad.TopicAllocation: {"*"}}
 	index := f.loadIndex()
@@ -141,7 +143,9 @@ func (f *nomadFollower) listen() error {
 	events, err := eventStream.Stream(context.Background(), topics, index, f.queryOptions)
 	die(f.logger, errors.WithMessage(err, "While starting the event stream"))
 
-	f.writeConfig()
+	if err := f.writeConfig(); err != nil {
+		f.logger.Println(err)
+	}
 
 	for event := range events {
 		if event.Err != nil {
@@ -307,13 +311,17 @@ func (f *nomadFollower) eventHandleAllocation(alloc *nomad.Allocation) {
 	switch alloc.ClientStatus {
 	case "pending", "running":
 		f.allocs.Add(alloc)
-		f.writeConfig()
+		if err := f.writeConfig(); err != nil {
+			f.logger.Println(err)
+		}
 	case "complete", "failed":
 		go func() {
 			// Give Vector time to scoop up all outstanding logs
 			time.Sleep(30 * time.Second)
 			f.allocs.Del(alloc)
-			f.writeConfig()
+			if err := f.writeConfig(); err != nil {
+				f.logger.Println(err)
+			}
 		}()
 	default:
 		fmt.Println(alloc.NodeID, alloc.JobID, alloc.ID, alloc.ClientStatus)
