@@ -87,6 +87,7 @@ func (f *nomadFollower) start() error {
 	f.setTokenFromEnvironment()
 	go f.reloadToken()
 	go f.checkToken()
+	go f.configWriter()
 	go f.listen()
 
 	f.logger.Println("Waiting for valid Vector configuration")
@@ -99,9 +100,8 @@ func (f *nomadFollower) reloadToken() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGHUP)
 
-	for sig := range c {
-		println(sig)
-		fmt.Printf("Got A HUP Signal! Now Reloading Nomad Token....\n")
+	for range c {
+		f.logger.Printf("Got A HUP Signal! Now Reloading Nomad Token....\n")
 		f.setTokenFromEnvironment()
 	}
 }
@@ -121,7 +121,7 @@ func (f *nomadFollower) checkToken() {
 		if currentToken, _, err := f.nomadClient.ACLTokens().Self(nil); err != nil {
 			f.logger.Fatal(err)
 		} else {
-			f.logger.Printf("Current Token: id: %s name: %s policies: %v\n", currentToken.AccessorID, currentToken.Name, currentToken.Policies)
+			f.logger.Printf("Current Token: %s %v\n", currentToken.Name, currentToken.Policies)
 		}
 	}
 }
@@ -133,9 +133,6 @@ func (f *nomadFollower) listen() error {
 
 	nodeID := self.Stats["client"]["node_id"]
 	f.populateAllocs(nodeID)
-	if err := f.writeConfig(); err != nil {
-		f.logger.Println(err)
-	}
 
 	topics := map[nomad.Topic][]string{nomad.TopicAllocation: {"*"}}
 	index := f.loadIndex()
@@ -143,9 +140,7 @@ func (f *nomadFollower) listen() error {
 	events, err := eventStream.Stream(context.Background(), topics, index, f.queryOptions)
 	die(f.logger, errors.WithMessage(err, "While starting the event stream"))
 
-	if err := f.writeConfig(); err != nil {
-		f.logger.Println(err)
-	}
+	f.configUpdated <- true
 
 	for event := range events {
 		if event.Err != nil {
@@ -184,10 +179,7 @@ func (f *nomadFollower) saveIndex(index uint64) {
 }
 
 func (f *nomadFollower) populateAllocs(nodeID string) {
-	f.allocs = &allocations{
-		allocs: map[string]*nomad.Allocation{},
-		lock:   &sync.RWMutex{},
-	}
+	f.allocs = &allocations{m: &sync.Map{}}
 
 	allocs, _, err := f.nomadClient.Allocations().List(f.queryOptions)
 	die(f.logger, errors.WithMessage(err, "While listing allocations"))
@@ -196,14 +188,34 @@ func (f *nomadFollower) populateAllocs(nodeID string) {
 		if allocStub.NodeID != nodeID {
 			continue
 		}
-		switch allocStub.ClientStatus {
-		case "pending", "running":
-			if alloc, _, err := f.nomadClient.Allocations().Info(allocStub.ID, f.queryOptions); err != nil {
-				f.logger.Fatal(err)
-			} else {
-				f.allocs.Add(alloc)
+
+		prefix := fmt.Sprintf(f.allocPrefix, allocStub.ID)
+		_, err := os.Stat(prefix)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		} else if err != nil {
+			f.logger.Println(errors.WithMessage(err, "checking alloc prefix"))
+			continue
+		}
+
+		if alloc, _, err := f.nomadClient.Allocations().Info(allocStub.ID, f.queryOptions); err != nil {
+			f.logger.Fatal(err)
+		} else {
+			f.allocs.Add(alloc)
+			switch allocStub.ClientStatus {
+			case "pending", "running":
+			case "complete", "failed":
+				// So this might not be recorded yet, we give it 10 minutes to do that.
+				go func(*nomad.Allocation) {
+					time.Sleep(10 * time.Minute)
+					f.allocs.Del(alloc)
+				}(alloc)
+			default:
+				f.logger.Printf("Ignore alloc %s : status = %s\n", allocStub.ID, allocStub.ClientStatus)
 			}
 		}
+
+		f.configUpdated <- true
 	}
 }
 
@@ -221,7 +233,6 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 		}
 
 		for _, taskName := range taskNames {
-			f.logger.Printf("Adding job %s task %s", alloc.ID, taskName)
 			for _, source := range []string{"stdout", "stderr"} {
 				sourceName := "source_" + source + "_" + taskName + "_" + id
 				sources[sourceName] = VectorSourceFile{
@@ -311,34 +322,47 @@ func (f *nomadFollower) eventHandleAllocation(alloc *nomad.Allocation) {
 	switch alloc.ClientStatus {
 	case "pending", "running":
 		f.allocs.Add(alloc)
-		if err := f.writeConfig(); err != nil {
-			f.logger.Println(err)
-		}
+		f.configUpdated <- true
 	case "complete", "failed":
 		go func() {
 			// Give Vector time to scoop up all outstanding logs
 			time.Sleep(30 * time.Second)
 			f.allocs.Del(alloc)
-			if err := f.writeConfig(); err != nil {
-				f.logger.Println(err)
-			}
+			f.configUpdated <- true
 		}()
 	default:
 		fmt.Println(alloc.NodeID, alloc.JobID, alloc.ID, alloc.ClientStatus)
 	}
 }
 
-func (f *nomadFollower) writeConfig() error {
-	f.configM.Lock()
-	defer f.configM.Unlock()
+func (f *nomadFollower) configWriter() {
+	var config *VectorConfig
+	for {
+		select {
+		case <-f.configUpdated:
+			generatedConfig := f.generateVectorConfig()
+			if len(generatedConfig.Sources) == 0 {
+				config = nil
+				continue
+			}
+			config = generatedConfig
+		case <-time.After(1 * time.Second):
+			if config == nil {
+				continue
+			}
+			f.logger.Printf("Update config with %d sources", len(config.Sources))
+			f.doWriteConfig(config)
+			config = nil
+		}
+	}
+}
 
-	time.Sleep(1 * time.Second)
-
+func (f *nomadFollower) doWriteConfig(config *VectorConfig) error {
 	f.logger.Println("Writing config to", f.configFile)
 
 	buf := &bytes.Buffer{}
 
-	if err := toml.NewEncoder(buf).Encode(f.generateVectorConfig()); err != nil {
+	if err := toml.NewEncoder(buf).Encode(config); err != nil {
 		return errors.WithMessage(err, "While encoding the vector config")
 	} else if err := os.WriteFile(f.configFile+".new", buf.Bytes(), 0o777); err != nil {
 		return errors.WithMessage(err, "while writing the new config file")

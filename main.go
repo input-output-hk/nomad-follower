@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/alexflint/go-arg"
@@ -20,7 +19,6 @@ type nomadFollower struct {
 	nomadClient    *nomad.Client
 	queryOptions   *nomad.QueryOptions
 	ctx            context.Context
-	configM        *sync.Mutex
 	allocs         *allocations
 	configFile     string
 	stateDir       string
@@ -29,6 +27,7 @@ type nomadFollower struct {
 	nomadNamespace string
 	vectorStart    chan bool
 	vectorStarted  bool
+	configUpdated  chan bool
 	nomadTokenFile string
 }
 
@@ -64,7 +63,6 @@ func main() {
 		logger:         logger,
 		nomadClient:    nomadClient,
 		queryOptions:   &nomad.QueryOptions{Namespace: args.Namespace},
-		configM:        &sync.Mutex{},
 		configFile:     filepath.Join(args.State, "vector.toml"),
 		stateDir:       args.State,
 		allocPrefix:    args.Alloc,
@@ -72,6 +70,7 @@ func main() {
 		nomadNamespace: args.Namespace,
 		vectorStart:    make(chan bool),
 		vectorStarted:  false,
+		configUpdated:  make(chan bool, 1000),
 		nomadTokenFile: args.TokenFile,
 	}
 

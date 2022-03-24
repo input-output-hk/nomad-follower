@@ -8,28 +8,22 @@ import (
 )
 
 type allocations struct {
-	allocs map[string]*api.Allocation
-	lock   *sync.RWMutex
+	m *sync.Map
 }
 
 func (a *allocations) Add(alloc *api.Allocation) {
-	a.lock.Lock()
-	defer a.lock.Unlock()
-	log.Println("Adding alloc", alloc.ID)
-	a.allocs[alloc.ID] = alloc
+	log.Printf("Add alloc %s %s\n", alloc.ID, alloc.Name)
+	a.m.Store(alloc.ID, alloc)
 }
 
 func (a *allocations) Del(alloc *api.Allocation) {
-	a.lock.Lock()
-	defer a.lock.Unlock()
-	log.Println("Removing alloc", alloc.ID)
-	delete(a.allocs, alloc.ID)
+	log.Printf("Del alloc %s %s\n", alloc.ID, alloc.Name)
+	a.m.Delete(alloc.ID)
 }
 
 func (a *allocations) Each(f func(string, *api.Allocation)) {
-	a.lock.RLock()
-	defer a.lock.RUnlock()
-	for id, alloc := range a.allocs {
-		f(id, alloc)
-	}
+	a.m.Range(func(key interface{}, value interface{}) bool {
+		f(key.(string), value.(*api.Allocation))
+		return true
+	})
 }
