@@ -189,16 +189,16 @@ func (f *nomadFollower) populateAllocs(nodeID string) {
 	die(f.logger, errors.WithMessage(err, "While listing allocations"))
 
 	for _, allocStub := range allocs {
-		alloc, _, err := f.nomadClient.Allocations().Info(allocStub.ID, f.queryOptions)
-		if err != nil {
-			f.logger.Fatal(err)
-		}
-		if alloc.NodeID != nodeID {
+		if allocStub.NodeID != nodeID {
 			continue
 		}
-		switch alloc.ClientStatus {
+		switch allocStub.ClientStatus {
 		case "pending", "running":
-			f.allocs.Add(alloc)
+			if alloc, _, err := f.nomadClient.Allocations().Info(allocStub.ID, f.queryOptions); err != nil {
+				f.logger.Fatal(err)
+			} else {
+				f.allocs.Add(alloc)
+			}
 		}
 	}
 }
