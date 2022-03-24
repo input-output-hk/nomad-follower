@@ -47,7 +47,7 @@ in {
       wantedBy = ["multi-user.target"];
       after = ["nomad.service"];
 
-      path = [pkgs.vector pkgs.coreutils];
+      path = with pkgs; [nomad-follower vector coreutils];
 
       environment = {
         NOMAD_ADDR = cfg.nomadAddr;
@@ -60,7 +60,6 @@ in {
         StateDirectory = "nomad-follower";
         WorkingDirectory = "/var/lib/nomad-follower";
         ExecStart = toString [
-          "@${cfg.package}/bin/nomad-follower"
           "nomad-follower"
           "--state"
           "/var/lib/nomad-follower"
