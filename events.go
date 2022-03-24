@@ -133,6 +133,8 @@ func (f *nomadFollower) listen() error {
 
 	nodeID := self.Stats["client"]["node_id"]
 	f.populateAllocs(nodeID)
+	f.writeConfig()
+
 	topics := map[nomad.Topic][]string{nomad.TopicAllocation: {"*"}}
 	index := f.loadIndex()
 	eventStream := f.nomadClient.EventStream()
@@ -326,27 +328,19 @@ func (f *nomadFollower) writeConfig() error {
 
 	f.logger.Println("Writing config to", f.configFile)
 
-	buf := bytes.Buffer{}
+	buf := &bytes.Buffer{}
 
-	if err := toml.NewEncoder(&buf).Encode(f.generateVectorConfig()); err != nil {
+	if err := toml.NewEncoder(buf).Encode(f.generateVectorConfig()); err != nil {
 		return errors.WithMessage(err, "While encoding the vector config")
-	}
-
-	if err := os.WriteFile(f.configFile+".new", buf.Bytes(), 0o777); err != nil {
+	} else if err := os.WriteFile(f.configFile+".new", buf.Bytes(), 0o777); err != nil {
 		return errors.WithMessage(err, "while writing the new config file")
-	}
-
-	if err := f.validateNewConfig(); err != nil {
+	} else if err := f.validateNewConfig(); err != nil {
 		return errors.WithMessage(err, "while validating vector config")
-	} else {
-		if !f.vectorStarted {
-			f.vectorStarted = true
-			f.vectorStart <- true
-		}
-	}
-
-	if err := os.Rename(f.configFile+".new", f.configFile); err != nil {
+	} else if err := os.Rename(f.configFile+".new", f.configFile); err != nil {
 		return errors.WithMessage(err, "while replacing the old config")
+	} else if !f.vectorStarted {
+		f.vectorStarted = true
+		f.vectorStart <- true
 	}
 
 	return nil
