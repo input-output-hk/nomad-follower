@@ -6,7 +6,6 @@ Log forwarder for aggregating allocation logs from nomad worker agents.
 
 Run the application on each worker in a nomad cluster.
 
-* Requires a valid `NOMAD_TOKEN` in your environment.
 * Requires the same permissions as Nomad to be able to read logs.
 
 ```

@@ -37,6 +37,7 @@ type cli struct {
 	Alloc     string `arg:"--alloc" help:"Prefix for Nomad allocation directories, %s will be replaced by the Allocation ID and globs are allowed"`
 	LokiUrl   string `arg:"--loki-url" help:"Loki Base URL"`
 	Namespace string `arg:"--namespace" help:"Nomad namespace to monitor"`
+	TokenFile string `arg:"--token-file" help:"Nomad token file"`
 }
 
 func (c *cli) Version() string { return buildVersion + " (" + buildCommit + ")" }
@@ -71,7 +72,7 @@ func main() {
 		nomadNamespace: args.Namespace,
 		vectorStart:    make(chan bool),
 		vectorStarted:  false,
-		nomadTokenFile: os.Getenv("NOMAD_TOKEN_FILE"),
+		nomadTokenFile: args.TokenFile,
 	}
 
 	err = os.MkdirAll(filepath.Join(f.stateDir, "vector"), 0o755)

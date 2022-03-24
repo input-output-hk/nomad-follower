@@ -22,13 +22,8 @@ name = "lint"
 command = "fd -e nix -X nixfmt -c"
 help = "Run code linters"
 
-[[commands]]
-name = "spawn"
-command = "systemd-nspawn --volatile=overlay --image result/tarball/nixos-system-x86_64-linux.tar.xz --read-only --boot --register=false"
-help = "Run systemd-nspawn"
-
 [devshell]
-name = "nomad-driver-nix"
+name = "nomad-follower"
 packages = [
   "diffutils",
   "go",
@@ -39,4 +34,5 @@ packages = [
   "fd",
   "gnumake",
   "alejandra",
+  "nomad-driver-podman",
 ]
