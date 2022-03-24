@@ -117,13 +117,12 @@ func (f *nomadFollower) setTokenFromEnvironment() {
 
 // Just checks that the current token is still fine regularly
 func (f *nomadFollower) checkToken() {
-	for {
+	for range time.NewTimer(30 * time.Minute).C {
 		if currentToken, _, err := f.nomadClient.ACLTokens().Self(nil); err != nil {
 			f.logger.Fatal(err)
 		} else {
 			f.logger.Printf("Current Token: id: %s name: %s policies: %v\n", currentToken.AccessorID, currentToken.Name, currentToken.Policies)
 		}
-		time.Sleep(1 * time.Minute)
 	}
 }
 
