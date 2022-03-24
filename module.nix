@@ -47,7 +47,7 @@ in {
       wantedBy = ["multi-user.target"];
       after = ["nomad.service"];
 
-      path = with pkgs; [nomad-follower vector coreutils];
+      path = [pkgs.vector];
 
       environment = {
         NOMAD_ADDR = cfg.nomadAddr;
@@ -60,6 +60,7 @@ in {
         StateDirectory = "nomad-follower";
         WorkingDirectory = "/var/lib/nomad-follower";
         ExecStart = toString [
+          "@${cfg.package}/bin/nomad-follower"
           "nomad-follower"
           "--state"
           "/var/lib/nomad-follower"
@@ -70,7 +71,7 @@ in {
           "--namespace"
           cfg.nomadNamespace
         ];
-        ExecReload = toString ["kill" "-HUP" "$MAINPID"];
+        ExecReload = toString ["${pkgs.coreutils}/bin/kill" "-HUP" "$MAINPID"];
       };
     };
   };
