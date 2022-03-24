@@ -47,7 +47,7 @@ in {
       wantedBy = ["multi-user.target"];
       after = ["nomad.service"];
 
-      path = [pkgs.vector];
+      path = [pkgs.vector pkgs.coreutils];
 
       environment = {
         NOMAD_ADDR = cfg.nomadAddr;
