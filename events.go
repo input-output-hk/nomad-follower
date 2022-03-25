@@ -130,9 +130,21 @@ func (f *nomadFollower) checkToken() {
 }
 
 // Listen to Nomad events and update Vector config accordingly
+func (f *nomadFollower) listenLoop() error {
+	for {
+		if err := f.listen(); err != nil {
+			f.logger.Println(errors.WithMessage(err, "while listening"))
+			time.Sleep(10 * time.Second)
+		}
+	}
+}
+
+// Listen to Nomad events and update Vector config accordingly
 func (f *nomadFollower) listen() error {
 	self, err := f.nomadClient.Agent().Self()
-	die(f.logger, errors.WithMessage(err, "While looking up the local agent"))
+	if err != nil {
+		return errors.WithMessage(err, "While looking up the local agent")
+	}
 
 	nodeID := self.Stats["client"]["node_id"]
 	f.populateAllocs(nodeID)
@@ -141,7 +153,9 @@ func (f *nomadFollower) listen() error {
 	index := f.loadIndex()
 	eventStream := f.nomadClient.EventStream()
 	events, err := eventStream.Stream(context.Background(), topics, index, f.queryOptions)
-	die(f.logger, errors.WithMessage(err, "While starting the event stream"))
+	if err != nil {
+		return errors.WithMessage(err, "While starting the event stream")
+	}
 
 	f.configUpdated <- true
 
