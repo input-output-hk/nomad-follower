@@ -159,6 +159,7 @@ func (f *nomadFollower) listen() error {
 
 	f.configUpdated <- true
 
+	f.logger.Println("start listening to nomad events")
 	for event := range events {
 		if event.Err != nil {
 			return err
