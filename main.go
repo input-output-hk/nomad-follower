@@ -51,7 +51,7 @@ func main() {
 		State:     "./state",
 		Alloc:     "/tmp/NomadClient*/%s/alloc",
 		LokiUrl:   "http://localhost:3100",
-		Namespace: "default",
+		Namespace: "*",
 	}
 	arg.MustParse(args)
 

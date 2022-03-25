@@ -198,7 +198,8 @@ func (f *nomadFollower) populateAllocs(nodeID string) {
 			continue
 		}
 
-		if alloc, _, err := f.nomadClient.Allocations().Info(allocStub.ID, f.queryOptions); err != nil {
+		options := &nomad.QueryOptions{Namespace: allocStub.Namespace}
+		if alloc, _, err := f.nomadClient.Allocations().Info(allocStub.ID, options); err != nil {
 			f.logger.Fatal(err)
 		} else {
 			f.allocs.Add(alloc)

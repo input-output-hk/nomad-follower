@@ -28,7 +28,7 @@ in {
 
       nomadNamespace = lib.mkOption {
         type = lib.types.str;
-        default = "cicero";
+        default = "*";
         description = ''
           Only match allocations in this Nomad Namespace
         '';
