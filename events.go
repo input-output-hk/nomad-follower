@@ -84,9 +84,12 @@ type VectorSinkLokiEncoding struct {
 }
 
 func (f *nomadFollower) start() error {
-	f.setTokenFromEnvironment()
-	go f.reloadToken()
-	go f.checkToken()
+	if f.nomadTokenFile == "" {
+	} else {
+		f.setTokenFromEnvironment()
+		go f.reloadToken()
+		go f.checkToken()
+	}
 	go f.configWriter()
 	go f.listen()
 
