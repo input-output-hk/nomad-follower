@@ -84,14 +84,17 @@ type VectorSinkLokiEncoding struct {
 }
 
 func (f *nomadFollower) start() error {
-	if f.nomadTokenFile == "" {
-	} else {
-		f.setTokenFromEnvironment()
+	if f.nomadTokenFile != "" {
+		if token, err := f.tokenFromEnvironment(); err != nil {
+			return errors.WithMessage(err, "while getting token from environment")
+		} else {
+			f.nomadClient.SetSecretID(token)
+		}
 		go f.reloadToken()
 		go f.checkToken()
 	}
 	go f.configWriter()
-	go f.listen()
+	go f.listenLoop()
 
 	f.logger.Println("Waiting for valid Vector configuration")
 	<-f.vectorStart
@@ -104,17 +107,21 @@ func (f *nomadFollower) reloadToken() {
 	signal.Notify(c, syscall.SIGHUP)
 
 	for range c {
-		f.logger.Printf("Got A HUP Signal! Now Reloading Nomad Token....\n")
-		f.setTokenFromEnvironment()
+		f.logger.Println("Reloading Token because of HUP Signal")
+		if token, err := f.tokenFromEnvironment(); err != nil {
+			f.logger.Fatal(errors.WithMessage(err, "while getting token from environment"))
+		} else {
+			f.tokenUpdated <- token
+		}
 	}
 }
 
-func (f *nomadFollower) setTokenFromEnvironment() {
+func (f *nomadFollower) tokenFromEnvironment() (string, error) {
 	if b, err := os.ReadFile(f.nomadTokenFile); err != nil {
-		f.logger.Fatalf("Failed to read the nomad token file at %s", f.nomadTokenFile)
+		return "", errors.WithMessagef(err, "Failed to read the nomad token file at %s", f.nomadTokenFile)
 	} else {
-		f.nomadClient.SetSecretID(strings.TrimSpace(string(b)))
-		f.logger.Printf("Nomad Token reloaded\n")
+		f.logger.Println("Nomad Token found")
+		return strings.TrimSpace(string(b)), nil
 	}
 }
 
@@ -139,14 +146,21 @@ func (f *nomadFollower) listenLoop() error {
 	}
 }
 
-// Listen to Nomad events and update Vector config accordingly
-func (f *nomadFollower) listen() error {
+func (f *nomadFollower) NodeID() (string, error) {
 	self, err := f.nomadClient.Agent().Self()
 	if err != nil {
-		return errors.WithMessage(err, "While looking up the local agent")
+		return "", errors.WithMessage(err, "While looking up the local agent")
 	}
 
-	nodeID := self.Stats["client"]["node_id"]
+	return self.Stats["client"]["node_id"], nil
+}
+
+// Listen to Nomad events and update Vector config accordingly
+func (f *nomadFollower) listen() error {
+	nodeID, err := f.NodeID()
+	if err != nil {
+		return err
+	}
 	f.populateAllocs(nodeID)
 
 	topics := map[nomad.Topic][]string{nomad.TopicAllocation: {"*"}}
@@ -160,20 +174,26 @@ func (f *nomadFollower) listen() error {
 	f.configUpdated <- true
 
 	f.logger.Println("start listening to nomad events")
-	for event := range events {
-		if event.Err != nil {
-			return err
-		}
 
-		if event.IsHeartbeat() {
-			continue
-		}
+	for {
+		select {
+		case token := <-f.tokenUpdated:
+			f.nomadClient.SetSecretID(token)
+			return nil
+		case event := <-events:
+			if event.Err != nil {
+				return err
+			}
 
-		f.saveIndex(event.Index)
-		f.eventHandler(event.Events, nodeID)
+			if event.IsHeartbeat() {
+				f.logger.Println("Nomad heartbeat")
+				continue
+			}
+
+			f.saveIndex(event.Index)
+			f.eventHandler(event.Events, nodeID)
+		}
 	}
-
-	return nil
 }
 
 func (f *nomadFollower) loadIndex() uint64 {

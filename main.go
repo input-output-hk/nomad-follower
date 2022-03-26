@@ -28,6 +28,7 @@ type nomadFollower struct {
 	vectorStart    chan bool
 	vectorStarted  bool
 	configUpdated  chan bool
+	tokenUpdated   chan string
 	nomadTokenFile string
 }
 
@@ -71,6 +72,7 @@ func main() {
 		vectorStart:    make(chan bool),
 		vectorStarted:  false,
 		configUpdated:  make(chan bool, 1000),
+		tokenUpdated:   make(chan string),
 		nomadTokenFile: args.TokenFile,
 	}
 
