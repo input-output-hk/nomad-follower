@@ -185,11 +185,6 @@ func (f *nomadFollower) listen() error {
 				return err
 			}
 
-			if event.IsHeartbeat() {
-				f.logger.Println("Nomad heartbeat")
-				continue
-			}
-
 			f.saveIndex(event.Index)
 			f.eventHandler(event.Events, nodeID)
 		}
