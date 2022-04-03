@@ -26,6 +26,14 @@ in {
         '';
       };
 
+      prometheusUrl = lib.mkOption {
+        type = lib.types.str;
+        default = "http://monitoring:8428/api/v1/write";
+        description = ''
+          Metrics will be sent to VictoriaMetrics (or Prometheus)
+        '';
+      };
+
       nomadNamespace = lib.mkOption {
         type = lib.types.str;
         default = "*";
@@ -96,6 +104,8 @@ in {
           cfg.allocPattern
           "--loki-url"
           cfg.lokiUrl
+          "--prometheus-url"
+          cfg.prometheusUrl
           "--namespace"
           cfg.nomadNamespace
         ];

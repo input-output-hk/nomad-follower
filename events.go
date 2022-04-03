@@ -40,6 +40,11 @@ type VectorSourceFile struct {
 	ReadFrom        string   `toml:"read_from"`
 }
 
+type VectorSourceHostMetrics struct {
+	Type       string   `toml:"type"`
+	Collectors []string `toml:"collectors"`
+}
+
 type VectorTransformRemap struct {
 	Type   string   `toml:"type"`
 	Inputs []string `toml:"inputs"`
@@ -57,9 +62,13 @@ type VectorSinkConsoleEncoding struct {
 	Codec string `toml:"codec"`
 }
 
+type VectorSink struct {
+	Type   string   `toml:"type"`
+	Inputs []string `toml:"inputs"`
+}
+
 type VectorSinkFile struct {
-	Type        string                 `toml:"type"`
-	Inputs      []string               `toml:"inputs"`
+	VectorSink
 	Path        string                 `toml:"path"`
 	Compression string                 `toml:"compression"`
 	Encoding    VectorSinkFileEncoding `toml:"encoding"`
@@ -70,11 +79,20 @@ type VectorSinkFileEncoding struct {
 }
 
 type VectorSinkLoki struct {
-	Type     string                 `toml:"type"`
-	Inputs   []string               `toml:"inputs"`
+	VectorSink
 	Endpoint string                 `toml:"endpoint"`
 	Labels   map[string]string      `toml:"labels"`
 	Encoding VectorSinkLokiEncoding `toml:"encoding"`
+}
+
+type VectorSinkPrometheus struct {
+	VectorSink
+	Endpoint    string      `toml:"endpoint"`
+	Healthcheck Healthcheck `toml:"healthcheck"`
+}
+
+type Healthcheck struct {
+	Enabled bool `toml:"enabled"`
 }
 
 type VectorSinkLokiEncoding struct {
@@ -96,6 +114,7 @@ func (f *nomadFollower) start() error {
 	go f.configWriter()
 	go f.listenLoop()
 
+	f.logger.Printf("Sending to Loki: %s and Prometheus: %s", f.lokiUrl, f.prometheusUrl)
 	f.logger.Println("Waiting for valid Vector configuration")
 	<-f.vectorStart
 	f.logger.Println("Starting Vector")
@@ -254,9 +273,13 @@ func (f *nomadFollower) populateAllocs(nodeID string) {
 }
 
 func (f *nomadFollower) generateVectorConfig() *VectorConfig {
-	sources := map[string]interface{}{}
+	sources := map[string]interface{}{
+		"host": VectorSourceHostMetrics{
+			Type:       "host_metrics",
+			Collectors: []string{"cgroups", "cpu", "disk", "filesystem", "load", "host", "memory", "network"},
+		},
+	}
 	transforms := map[string]interface{}{}
-	sinks := map[string]interface{}{}
 
 	f.allocs.Each(func(id string, alloc *nomad.Allocation) {
 		prefix := fmt.Sprintf(f.allocPrefix, id)
@@ -296,10 +319,24 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 		}
 	})
 
-	sinks = map[string]interface{}{
-		"loki": VectorSinkLoki{
-			Type:     "loki",
-			Inputs:   []string{"transform_stdout_*", "transform_stderr_*"},
+	sinks := map[string]interface{}{
+		"prometheus": VectorSinkPrometheus{
+			VectorSink: VectorSink{
+				Type:   "prometheus_remote_write",
+				Inputs: []string{"host"},
+			},
+			Endpoint: f.prometheusUrl,
+			// VictoriaMetrics doesn't respond with 200 on GET to this endpoint
+			Healthcheck: Healthcheck{Enabled: false},
+		},
+	}
+
+	if len(transforms) > 0 {
+		sinks["loki"] = VectorSinkLoki{
+			VectorSink: VectorSink{
+				Type:   "loki",
+				Inputs: []string{"transform_stdout_*", "transform_stderr_*"},
+			},
 			Endpoint: f.lokiUrl,
 			Labels: map[string]string{
 				"source":           "{{ source }}",
@@ -317,7 +354,7 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 				TimestampFormat: "rfc3339",
 				OnlyFields:      []string{"message"},
 			},
-		},
+		}
 	}
 
 	return &VectorConfig{
@@ -385,7 +422,9 @@ func (f *nomadFollower) configWriter() {
 				continue
 			}
 			f.logger.Printf("Update config with %d sources", len(config.Sources))
-			f.doWriteConfig(config)
+			if err := f.doWriteConfig(config); err != nil {
+				f.logger.Printf("Failed writing config: %s", err.Error())
+			}
 			config = nil
 		}
 	}
@@ -409,12 +448,18 @@ func (f *nomadFollower) doWriteConfig(config *VectorConfig) error {
 		f.vectorStart <- true
 	}
 
+	f.logger.Println("Config written to", f.configFile)
 	return nil
 }
 
 func (f *nomadFollower) validateNewConfig() error {
 	cmd := exec.Command("vector", "validate", f.configFile+".new")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	output := &bytes.Buffer{}
+	cmd.Stdout = output
+	cmd.Stderr = output
+	if err := cmd.Run(); err != nil {
+		f.logger.Println(string(output.String()))
+		return err
+	}
+	return nil
 }

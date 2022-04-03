@@ -24,6 +24,7 @@ type nomadFollower struct {
 	stateDir       string
 	allocPrefix    string
 	lokiUrl        string
+	prometheusUrl  string
 	nomadNamespace string
 	vectorStart    chan bool
 	vectorStarted  bool
@@ -36,6 +37,7 @@ type cli struct {
 	State     string `arg:"--state" help:"dir for vector and index state"`
 	Alloc     string `arg:"--alloc" help:"Prefix for Nomad allocation directories, %s will be replaced by the Allocation ID and globs are allowed"`
 	LokiUrl   string `arg:"--loki-url" help:"Loki Base URL"`
+	PromUrl   string `arg:"--prometheus-url" help:"Prometheus Write API URL"`
 	Namespace string `arg:"--namespace" help:"Nomad namespace to monitor"`
 	TokenFile string `arg:"--token-file" help:"Nomad token file"`
 }
@@ -51,7 +53,8 @@ func main() {
 	args := &cli{
 		State:     "./state",
 		Alloc:     "/tmp/NomadClient*/%s/alloc",
-		LokiUrl:   "http://localhost:3100",
+		LokiUrl:   "http://127.0.0.1:3100",
+		PromUrl:   "http://127.0.0.1:8428/api/v1/write",
 		Namespace: "*",
 	}
 	arg.MustParse(args)
@@ -68,6 +71,7 @@ func main() {
 		stateDir:       args.State,
 		allocPrefix:    args.Alloc,
 		lokiUrl:        args.LokiUrl,
+		prometheusUrl:  args.PromUrl,
 		nomadNamespace: args.Namespace,
 		vectorStart:    make(chan bool),
 		vectorStarted:  false,
