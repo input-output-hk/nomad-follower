@@ -279,7 +279,21 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 			Collectors: []string{"cgroups", "cpu", "disk", "filesystem", "load", "host", "memory", "network"},
 		},
 	}
-	transforms := map[string]interface{}{}
+	transforms := map[string]interface{}{
+		"transform_host": VectorTransformRemap{
+			Inputs: []string{"host"},
+			Type:   "remap",
+			Source: `
+			if is_string(.tags.cgroup) {
+				.tags.cgroup, err = replace(.tags.cgroup, "\\x2d", "-")
+				if err != null {
+					log(., level: "error")
+					log(err, level: "error")
+				}
+			}
+			`,
+		},
+	}
 
 	f.allocs.Each(func(id string, alloc *nomad.Allocation) {
 		prefix := fmt.Sprintf(f.allocPrefix, id)
@@ -323,7 +337,7 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 		"prometheus": VectorSinkPrometheus{
 			VectorSink: VectorSink{
 				Type:   "prometheus_remote_write",
-				Inputs: []string{"host"},
+				Inputs: []string{"transform_host"},
 			},
 			Endpoint: f.prometheusUrl,
 			// VictoriaMetrics doesn't respond with 200 on GET to this endpoint
@@ -331,7 +345,7 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 		},
 	}
 
-	if len(transforms) > 0 {
+	if len(transforms) > 1 {
 		sinks["loki"] = VectorSinkLoki{
 			VectorSink: VectorSink{
 				Type:   "loki",
