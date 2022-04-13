@@ -93,13 +93,15 @@ in {
         RestartSec = "10s";
         StateDirectory = "nomad-follower";
         WorkingDirectory = "/var/lib/nomad-follower";
-        ExecStart = toString [
+        ExecStart = toString ([
           "@${cfg.package}/bin/nomad-follower"
           "nomad-follower"
           "--state"
           "/var/lib/nomad-follower"
+        ] ++ lib.optionals (cfg.nomadTokenFile != "") [
           "--token-file"
           cfg.nomadTokenFile
+        ] ++ [
           "--alloc"
           cfg.allocPattern
           "--loki-url"
@@ -108,7 +110,7 @@ in {
           cfg.prometheusUrl
           "--namespace"
           cfg.nomadNamespace
-        ];
+        ]);
         ExecReload = toString ["${pkgs.coreutils}/bin/kill" "-HUP" "$MAINPID"];
       };
     };
