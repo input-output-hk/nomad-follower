@@ -383,7 +383,7 @@ func (f *nomadFollower) generateVectorConfig() *VectorConfig {
 func (f *nomadFollower) vector() error {
 	cmd := exec.Command(
 		"vector",
-		"--watch-config",
+		"--watch-config", f.configFile,
 		"--config-toml", f.configFile,
 		"--quiet",
 	)
