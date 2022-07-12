@@ -146,7 +146,8 @@ func (f *nomadFollower) tokenFromEnvironment() (string, error) {
 
 // Just checks that the current token is still fine regularly
 func (f *nomadFollower) checkToken() {
-	for range time.NewTimer(30 * time.Minute).C {
+	timer := time.NewTicker(30 * time.Minute)
+	for range timer.C {
 		if currentToken, _, err := f.nomadClient.ACLTokens().Self(nil); err != nil {
 			f.logger.Fatal(err)
 		} else {
