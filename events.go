@@ -390,7 +390,11 @@ func (f *nomadFollower) vector() error {
 	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	return errors.Errorf("Vector died with exit code %d", cmd.ProcessState.ExitCode)
 }
 
 func (f *nomadFollower) eventHandler(events []nomad.Event, nodeID string) {
